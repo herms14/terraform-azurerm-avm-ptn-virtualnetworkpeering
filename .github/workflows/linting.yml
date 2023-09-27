@@ -1,11 +1,14 @@
 ---
-name: docs-check
+name: linting
 
 on:
   pull_request:
     types: ['opened', 'reopened', 'synchronize']
   merge_group:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: docsfmttest-${{ github.event.pull_request.head.repo.full_name }}/${{ github.head_ref || github.run_id }}
@@ -16,7 +19,13 @@ jobs:
     name: docs-check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: checkout repository
         uses: actions/checkout@v4
-      - name: Check docs
+
+      - name: check docs
         uses: Azure/terraform-azurerm-avm-template/.github/actions/docs-check@main
+
+      - name: lint terraform
+        uses: Azure/terraform-azurerm-avm-template/.github/actions/linting@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
