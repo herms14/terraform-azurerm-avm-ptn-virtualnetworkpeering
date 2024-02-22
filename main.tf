@@ -1,32 +1,50 @@
-# TODO: insert resources here.
-data "azurerm_resource_group" "parent" {
-  count = var.location == null ? 1 : 0
-  name  = var.resource_group_name
+resource "azapi_resource" "vnet_peering" {
+  for_each  = var.virtual_networks
+  type      = "Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2022-05-01"
+  parent_id = each.value.hub_resource_id
+  name      = "${each.key}-peering"
+
+  body = jsonencode({
+    properties = {
+      remoteVirtualNetwork = {
+        id = each.value.spoke_resource_id
+      },
+      allowVirtualNetworkAccess = true,
+      allowForwardedTraffic     = each.value.allow_forwarded_traffic,
+      allowGatewayTransit       = each.value.allow_gateway_transit,
+      useRemoteGateways         = each.value.use_remote_gateways
+    }
+  })
+
+  lifecycle {
+    ignore_changes        = [type, parent_id, name, body]
+    create_before_destroy = true
+  }
 }
 
-resource "azurerm_TODO_the_resource_for_this_module" "this" {
-  name                = var.name # calling code must supply the name
-  resource_group_name = var.resource_group_name
-  location            = coalesce(var.location, local.resource_group_location)
-  # etc
+
+
+locals {
+  vnet_peering_reverse_body = { for k, v in var.virtual_networks : k =>
+    var.peering_direction == "two_way" ? {
+      properties = {
+        remoteVirtualNetwork = {
+          id = v.hub_resource_id
+        },
+        allowVirtualNetworkAccess = true,
+        allowForwardedTraffic     = v.allow_forwarded_traffic,
+        allowGatewayTransit       = v.allow_gateway_transit,
+        useRemoteGateways         = v.use_remote_gateways
+      }
+    } : null
+  }
 }
 
-# required AVM resources interfaces
-resource "azurerm_management_lock" "this" {
-  count      = var.lock.kind != "None" ? 1 : 0
-  name       = coalesce(var.lock.name, "lock-${var.name}")
-  scope      = azurerm_TODO_resource.this.id
-  lock_level = var.lock.kind
-}
+resource "azapi_resource" "vnet_peering_reverse" {
+  for_each = { for k, v in local.vnet_peering_reverse_body : k => v if v != null }
 
-resource "azurerm_role_assignment" "this" {
-  for_each                               = var.role_assignments
-  scope                                  = azurerm_TODO_resource.this.id
-  role_definition_id                     = strcontains(lower(each.value.role_definition_id_or_name), lower(local.role_definition_resource_substring)) ? each.value.role_definition_id_or_name : null
-  role_definition_name                   = strcontains(lower(each.value.role_definition_id_or_name), lower(local.role_definition_resource_substring)) ? null : each.value.role_definition_id_or_name
-  principal_id                           = each.value.principal_id
-  condition                              = each.value.condition
-  condition_version                      = each.value.condition_version
-  skip_service_principal_aad_check       = each.value.skip_service_principal_aad_check
-  delegated_managed_identity_resource_id = each.value.delegated_managed_identity_resource_id
+  type      = "Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2022-05-01"
+  parent_id = var.virtual_networks[each.key].spoke_resource_id
+  name      = "reverse-peering"
+  body      = jsonencode(each.value)
 }
